@@ -1,0 +1,116 @@
+#!/usr/bin/env python3
+"""Retrowave text menu and profile launcher.
+
+Reads INI profiles from /etc/retrowave/profiles.d and /var/lib/retrowave/profiles.d,
+merges enabled entries, finds default+timeout, and launches DOSBox engine commands.
+"""
+import configparser
+import os
+import select
+import subprocess
+import sys
+from pathlib import Path
+
+SYSTEM_PROFILES = Path("/etc/retrowave/profiles.d")
+USER_PROFILES = Path("/var/lib/retrowave/profiles.d")
+
+
+def load_profiles():
+    profiles = []
+    for directory in (SYSTEM_PROFILES, USER_PROFILES):
+        if not directory.exists():
+            continue
+        for ini_path in sorted(directory.glob("*.ini")):
+            cfg = configparser.ConfigParser()
+            cfg.read(ini_path)
+            if "profile" not in cfg:
+                continue
+            enabled = cfg.getboolean("profile", "enabled", fallback=True)
+            if not enabled:
+                continue
+            profiles.append((ini_path, cfg))
+    return profiles
+
+
+def profile_meta(path, cfg):
+    p = cfg["profile"]
+    return {
+        "path": path,
+        "name": p.get("name", path.stem),
+        "engine": p.get("engine", "dosbox-x"),
+        "type": p.get("type", "folder"),
+        "default": p.getboolean("default", fallback=False),
+        "timeout": p.getint("timeout", fallback=0),
+        "config": cfg.get("dosbox", "config", fallback=""),
+        "mount_c": cfg.get("storage", "mount_c", fallback="/var/lib/retrowave/drives/c"),
+        "hdd_image": cfg.get("storage", "hdd_image", fallback=""),
+        "cdrom_image": cfg.get("storage", "cdrom_image", fallback=""),
+    }
+
+
+def build_command(meta):
+    if meta["engine"] == "dosbox-x":
+        cmd = ["dosbox-x"]
+        if meta["config"]:
+            cmd += ["-conf", meta["config"]]
+        if meta["type"] == "folder":
+            cmd += ["-c", f'mount c "{meta["mount_c"]}"', "-c", "c:"]
+        elif meta["type"] == "image":
+            if meta["hdd_image"]:
+                cmd += ["-c", f'imgmount c "{meta["hdd_image"]}" -size 512,63,16,1024', "-c", "c:"]
+            if meta["cdrom_image"]:
+                cmd += ["-c", f'imgmount d "{meta["cdrom_image"]}" -t iso']
+        return cmd
+
+    if meta["engine"] == "dosbox-staging":
+        cmd = ["dosbox", "--conf", meta["config"]] if meta["config"] else ["dosbox"]
+        if meta["type"] == "folder":
+            cmd += ["-c", f'mount c "{meta["mount_c"]}"', "-c", "c:"]
+        return cmd
+
+    raise ValueError(f"Unsupported engine: {meta['engine']}")
+
+
+def timed_choice(default_index, timeout):
+    if timeout <= 0:
+        return default_index
+    print(f"\nAuto-booting default profile in {timeout} seconds. Enter number to override.")
+    rlist, _, _ = select.select([sys.stdin], [], [], timeout)
+    if rlist:
+        line = sys.stdin.readline().strip()
+        if line.isdigit():
+            return int(line) - 1
+    return default_index
+
+
+def main():
+    raw = load_profiles()
+    if not raw:
+        print("No profiles found.")
+        return 1
+
+    profiles = [profile_meta(path, cfg) for path, cfg in raw]
+    default_idx = next((i for i, p in enumerate(profiles) if p["default"]), 0)
+    timeout = profiles[default_idx]["timeout"]
+
+    print("=" * 56)
+    print(" Retrowave MVP Boot Menu")
+    print("=" * 56)
+    for idx, p in enumerate(profiles, start=1):
+        marker = "*" if p["default"] else " "
+        print(f" {idx}. [{marker}] {p['name']} ({p['engine']}, {p['type']})")
+
+    choice = timed_choice(default_idx, timeout)
+    if choice < 0 or choice >= len(profiles):
+        choice = default_idx
+
+    selected = profiles[choice]
+    cmd = build_command(selected)
+    print(f"\nLaunching: {selected['name']}")
+    print("Command:", " ".join(cmd))
+    os.environ.setdefault("SDL_VIDEODRIVER", "x11")
+    return subprocess.call(cmd)
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -1,0 +1,11 @@
+#!/usr/bin/env sh
+# Minimal X startup for appliance mode: no desktop shell, only Retrowave menu.
+
+xset -dpms
+xset s off
+xset s noblank
+
+# Openbox helps enforce fullscreen/no-border behavior for emulators.
+openbox &
+
+exec /usr/local/bin/retrowave-menu
