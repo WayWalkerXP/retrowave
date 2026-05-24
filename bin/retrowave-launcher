@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Entrypoint launched by systemd. Runs a minimal X session and starts the profile menu.
+
+exec /usr/bin/xinit /usr/local/bin/retrowave-menu -- /usr/bin/Xorg -nolisten tcp -nocursor vt1

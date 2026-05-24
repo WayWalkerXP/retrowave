@@ -1,0 +1,24 @@
+[Unit]
+Description=Retrowave appliance launcher
+After=systemd-user-sessions.service network.target
+Conflicts=getty@tty1.service
+
+[Service]
+User=retrowave
+WorkingDirectory=/var/lib/retrowave
+Environment=HOME=/var/lib/retrowave
+Environment=XDG_RUNTIME_DIR=/run/user/999
+PAMName=login
+TTYPath=/dev/tty1
+TTYReset=yes
+TTYVHangup=yes
+TTYVTDisallocate=yes
+StandardInput=tty
+StandardOutput=journal
+StandardError=journal
+ExecStart=/usr/local/bin/retrowave-launcher
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target

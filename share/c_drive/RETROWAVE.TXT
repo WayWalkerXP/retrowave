@@ -1,0 +1,3 @@
+Retrowave MVP persistent C: drive
+
+This directory is shared by default profiles and persists across reboots.
